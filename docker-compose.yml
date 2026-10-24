@@ -1,0 +1,103 @@
+name: dnhy-space
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: dnhy-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-DnhySpace}
+      TZ: ${TZ:-Asia/Shanghai}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - dnhy_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-DnhySpace}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  migrator:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.migrator
+    environment:
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-DnhySpace};User ID=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:-postgres};"
+      App__AdminEmail: ${ADMIN_EMAIL:-admin@dnhy-space.local}
+      App__AdminPassword: ${ADMIN_PASSWORD:-ChangeMe_123456}
+      OpenIddict__Applications__DnhySpace_Admin__RootUrl: ${ADMIN_PUBLIC_URL:-http://localhost:8081}
+      OpenIddict__Applications__DnhySpace_Swagger__RootUrl: ${API_PUBLIC_URL:-http://localhost:8080}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      TZ: ${TZ:-Asia/Shanghai}
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-DnhySpace};User ID=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:-postgres};"
+      App__SelfUrl: ${API_PUBLIC_URL:-http://localhost:8080}
+      App__CorsOrigins: ${WEB_PUBLIC_URL:-http://localhost:3000},${ADMIN_PUBLIC_URL:-http://localhost:8081}
+      App__RedirectAllowedUrls: ${WEB_PUBLIC_URL:-http://localhost:3000},${ADMIN_PUBLIC_URL:-http://localhost:8081}
+      AuthServer__Authority: ${API_PUBLIC_URL:-http://localhost:8080}
+      AuthServer__RequireHttpsMetadata: "false"
+      AuthServer__DisableTransportSecurityRequirement: "true"
+      OpenIddict__Applications__DnhySpace_Admin__RootUrl: ${ADMIN_PUBLIC_URL:-http://localhost:8081}
+      VisitorToken__Issuer: dnhy-space-web
+      VisitorToken__Audience: dnhy-space-api
+      VisitorToken__Secret: ${VISITOR_JWT_SECRET:-please-change-this-visitor-jwt-secret-32chars}
+      Timing__TimeZone: ${TZ:-Asia/Shanghai}
+    ports:
+      - "${API_PORT:-8080}:8080"
+    volumes:
+      - dnhy_blobs:/app/blobs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
+
+  web:
+    build:
+      context: ./web
+      args:
+        NEXT_PUBLIC_SITE_NAME: ${NEXT_PUBLIC_SITE_NAME:-dnhy-space}
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      ABP_API_BASE_URL: http://api:8080
+      NEXT_PUBLIC_SITE_NAME: ${NEXT_PUBLIC_SITE_NAME:-dnhy-space}
+      AUTH_URL: ${WEB_PUBLIC_URL:-http://localhost:3000}
+      AUTH_SECRET: ${AUTH_SECRET:-please-change-this-auth-secret}
+      VISITOR_JWT_SECRET: ${VISITOR_JWT_SECRET:-please-change-this-visitor-jwt-secret-32chars}
+      AUTH_GITHUB_ID: ${AUTH_GITHUB_ID:-}
+      AUTH_GITHUB_SECRET: ${AUTH_GITHUB_SECRET:-}
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      - api
+
+  admin:
+    build:
+      context: ./admin
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${ADMIN_PORT:-8081}:80"
+    depends_on:
+      - api
+
+volumes:
+  dnhy_pgdata:
+    name: dnhy_pgdata
+  dnhy_blobs:
+    name: dnhy_blobs
