@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | `backend/` | ABP 10.x（.NET 10）+ EF Core + PostgreSQL | 领域模型、REST API、Identity/OpenIddict 认证、文件存储 |
 | `web/` | Next.js 16（App Router）+ Tailwind | 公开站点：时间线、日记/随想详情、评论与点赞 |
-| `admin/` | Vben Admin 5（Vue 3 + Vite + Ant Design Vue） | 管理后台：内容管理、日程管理、评论管理、仪表盘 |
+| `admin/` | Vben Admin 5（Vue 3 + Vite + Ant Design Vue） | 管理后台：内容管理、日程管理、Deadline 管理、评论管理、仪表盘 |
 
 ## 认证
 
@@ -18,7 +18,7 @@
 
 - 管理员：ABP Identity + OpenIddict 密码模式，后台保存 `access_token` / `refresh_token` 并自动刷新。
 - 访客：独立的 `Visitor` JwtBearer 方案，校验 Next.js 以 `VISITOR_JWT_SECRET` 签发的 HS256 令牌（issuer `dnhy-space-web`，audience `dnhy-space-api`，claims: `github_id` / `github_login` / `name` / `picture` / `role`）。
-- 业务接口均为显式控制器（`/api/posts`、`/api/comments`、`/api/likes`、`/api/schedules`、`/api/dashboard`、`/api/files`），通过 `[Authorize(AuthenticationSchemes = ...)]` 指定方案，不再依赖 ABP 约定式路由。
+- 业务接口均为显式控制器（`/api/posts`、`/api/comments`、`/api/likes`、`/api/schedules`、`/api/deadlines`、`/api/dashboard`、`/api/files`），通过 `[Authorize(AuthenticationSchemes = ...)]` 指定方案，不再依赖 ABP 约定式路由。
 
 ## 数据模型
 
@@ -33,15 +33,26 @@ Summary                  AllDay                  AuthorName
 Visibility (Private|     Notes                   AuthorAvatarUrl          unique(PostId, GithubUserId)
   Public)                IsCompleted             Content
 OccurredAt
+
+Deadline
+--------
+Id
+ProjectName
+Description
+StartDate
+DueDate
+AccentColor
+SortOrder
 ```
 
-`ScheduleItem` 仅所有者可访问；`Post` 的私密项对匿名与访客均返回 404。
+`ScheduleItem` 仅所有者可访问；`Deadline` 的管理接口仅所有者可访问，公开接口只读。`Deadline` 的 `ProgressPercent` / `DaysRemaining` / `Status` 由服务端按开始日期到到期日期的时间跨度计算，状态分为进行中、即将到期（≤3 天）与已过期。`Post` 的私密项对匿名与访客均返回 404。
 
 时间统一以本地时间（`Timing:TimeZone` = `Asia/Shanghai`）存储与展示，数据库启用 `Npgsql.EnableLegacyTimestampBehavior`，因此时间列是 `timestamp without time zone`。
 
 ## 数据流
 
 - 公开页面：Next.js Server Component → `web/src/lib/api.ts`（`apiGet` / `apiGetOrNull`，服务端调用 ABP 内网地址）→ 渲染；写操作后调用 `revalidatePath` 刷新缓存。
+- 前台自动刷新：`/` 与 `/deadlines` 分别轮询 `/api/posts/public/version`、`/api/deadlines/public/version`（后端取任意增删改后的最大时间戳）；检测到变化时调用 `router.refresh()` 重新渲染（页面数据不缓存，始终读取最新值），右下角显示刷新气泡。
 - 后台页面：Vben → `src/api/request.ts` 中的 `requestClient`（Bearer）→ ABP。开发环境经 Vite 代理 `/api-proxy`，生产环境经 nginx 同源反代，避免 CORS。
 - 访客写操作：浏览器 → Next.js Route Handler（`web/src/app/api/**`）→ 校验 Auth.js session → `createVisitorToken` 签发访客 JWT → ABP。
 

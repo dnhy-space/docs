@@ -1,9 +1,9 @@
 # dnhy-space
 
-个人空间：日程管理 + 随想 / 日记，按时间线展示。前台是 Next.js 站点，后台是 Vben Admin 5，接口由 ABP Framework（.NET 10）提供。
+个人空间：日程管理 + Deadline 进度 + 随想 / 日记，按时间线展示。前台是 Next.js 站点，后台是 Vben Admin 5，接口由 ABP Framework（.NET 10）提供。
 
-- 公开站点（时间线、详情、评论、点赞）：`web/`（Next.js 16 + Tailwind v4）
-- 管理后台（写内容、管日程、清理评论）：`admin/`（Vue 3 + Vite + Ant Design Vue）
+- 公开站点（时间线、详情、评论、点赞、Deadline 进度）：`web/`（Next.js 16 + Tailwind v4）
+- 管理后台（写内容、管日程、管 Deadline、清理评论）：`admin/`（Vue 3 + Vite + Ant Design Vue）
 - 接口服务（ABP + PostgreSQL + OpenIddict）：`backend/`
 
 ## 技术栈
@@ -89,15 +89,20 @@ pnpm dev:antd
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/posts/public` | 公开时间线（分页、可按类型筛选） |
-| GET | `/api/posts/public/{id}` | 公开详情（私密内容返回 404） |
-| GET/POST/PUT/DELETE | `/api/posts` | 管理员内容管理 |
+| GET | `/api/posts/public` | 公开时间线（分页、可按类型筛选；归档内容不返回） |
+| GET | `/api/posts/public/{id}` | 公开详情（私密或已归档内容返回 404） |
+| GET | `/api/posts/public/version` | 日记/随想版本号（前台轮询自动刷新） |
+| GET/POST/PUT/DELETE | `/api/posts` | 管理员内容管理（可按 `IsArchived` 筛选） |
+| POST | `/api/posts/{id}/archive`、`/unarchive` | 归档 / 取消归档（归档后仅后台可见） |
 | GET | `/api/comments?PostId=` | 评论列表 |
 | POST | `/api/comments` | 访客发表评论 |
 | DELETE | `/api/comments/{id}/mine` | 访客删除自己的评论 |
 | POST | `/api/likes/toggle` | 访客点赞/取消 |
 | GET | `/api/likes/status/{postId}` | 点赞状态 |
 | GET/POST/PUT/DELETE | `/api/schedules` | 管理员日程（含完成状态切换） |
+| GET | `/api/deadlines/public` | 公开 Deadline 列表（含进度与状态） |
+| GET | `/api/deadlines/public/version` | Deadline 版本号（前台轮询自动刷新） |
+| GET/POST/PUT/DELETE | `/api/deadlines` | 管理员 Deadline 管理 |
 | GET | `/api/dashboard/summary` | 后台统计 |
 | POST | `/api/files/upload` | 图片上传（ABP BlobStoring FileSystem） |
 | GET | `/api/files/{blobName}` | 图片读取（前台 `/api/files/*` 代理） |
